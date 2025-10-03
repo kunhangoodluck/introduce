@@ -11,6 +11,7 @@
     <style>
         body {
             font-family: 'Noto Sans TC', sans-serif;
+            transition: background-color 0.5s ease;
         }
         .perspective { perspective: 1000px; }
         .flip-card-inner { position: relative; width: 100%; height: 100%; transition: transform 0.7s; transform-style: preserve-3d; box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); }
@@ -21,31 +22,81 @@
         .loader { border: 5px solid #f3f3f3; border-radius: 50%; border-top: 5px solid #3498db; width: 50px; height: 50px; animation: spin 1.5s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         .force-hidden { display: none !important; }
+        
+        /* 不同階段的背景 */
+        body.phase-login { background-color: #f3e8ff; } /* 淡紫色 */
+        body.phase-question { background-color: #e0f2f1; } /* 淡青色 */
+        body.phase-answer { background-color: #fff9c4; } /* 淡黃色 */
+        body.phase-presentation { background-color: #e3f2fd; } /* 淡藍色 */
+        body.phase-guessing { background-color: #ffcdd2; } /* 淡紅色 */
+        body.phase-results { background-color: #dcedc8; } /* 淡綠色 */
+
     </style>
 </head>
-<body class="bg-amber-50 text-gray-800">
-    <!-- 內容與前一版相同，此處省略以節省篇幅 -->
+<body class="bg-gray-100">
+    <!-- 讀取畫面 -->
     <div id="loading-overlay" class="fixed inset-0 bg-white bg-opacity-80 z-50 flex justify-center items-center backdrop-blur-sm">
         <div class="text-center">
             <div class="loader mx-auto"></div>
             <p class="mt-4 text-lg text-gray-700 font-semibold">正在連線到共享教室...</p>
         </div>
     </div>
+    <!-- 自訂通用視窗 -->
     <div id="custom-modal" class="fixed inset-0 bg-gray-900 bg-opacity-50 z-50 hidden flex justify-center items-center p-4">
-        <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm text-center transform transition-all scale-95 opacity-0" id="modal-content">
+        <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md text-center transform transition-all scale-95 opacity-0" id="modal-content">
             <h3 id="modal-title" class="text-xl font-bold mb-4"></h3>
             <div id="modal-body"></div>
             <div id="modal-buttons" class="flex justify-center gap-4 mt-6"></div>
         </div>
     </div>
-     <div id="app-container" class="container mx-auto p-4 md:p-8">
+
+    <!-- 0. 登入介面 -->
+    <div id="login-phase" class="min-h-screen flex items-center justify-center p-4 force-hidden">
+        <div class="w-full max-w-sm bg-white p-8 rounded-xl shadow-lg text-center">
+            <h1 class="text-3xl font-bold text-purple-700 mb-2">歡迎！</h1>
+            <p class="text-gray-600 mb-6">請輸入你的座號以加入活動</p>
+            <input type="number" id="seat-number-input" class="w-full text-center px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 mb-4" placeholder="請輸入座號">
+            <button id="login-btn" class="w-full bg-purple-500 text-white font-bold py-3 px-6 rounded-lg hover:bg-purple-600 transition-colors">進入活動</button>
+            <p id="login-error" class="text-red-500 text-sm mt-2 h-4"></p>
+
+            <div class="mt-6 border-t pt-4">
+                 <button id="teacher-access-btn" class="text-sm text-gray-500 hover:text-gray-700 hover:underline">老師由此進入</button>
+            </div>
+        </div>
+    </div>
+
+     <!-- 主要應用程式容器 -->
+     <div id="app-container" class="container mx-auto p-4 md:p-8 force-hidden">
         <header class="text-center mb-8">
             <h1 class="text-4xl md:text-5xl font-bold text-amber-700">自我介紹小書</h1>
             <p class="mt-2 text-lg text-amber-600">讓我們透過問與答，更認識彼此！</p>
-            <p id="session-id-display" class="text-sm text-gray-500 mt-2 font-mono bg-gray-100 px-2 py-1 rounded-md inline-block"></p>
+            <div class="mt-2">
+                <p class="inline-block text-sm text-gray-700">你好, <span id="user-info" class="font-bold"></span></p>
+                <button id="download-card-btn" class="ml-4 bg-purple-500 text-white font-bold py-1 px-3 text-sm rounded-lg hover:bg-purple-600 transition-colors force-hidden">下載我的檔案卡 (PDF)</button>
+            </div>
         </header>
-        <div id="phase-1" class="bg-white p-6 rounded-xl shadow-lg mb-8 force-hidden">
-            <h2 class="text-2xl font-bold mb-2 text-teal-700">第一階段：提出你的問題</h2>
+
+        <!-- 教師控制面板 -->
+        <div id="teacher-panel" class="bg-white p-4 rounded-xl shadow-lg mb-8 border-2 border-red-300 force-hidden">
+            <h2 class="text-xl font-bold text-red-700 mb-4 text-center">教師控制面板 (需密碼)</h2>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 items-end">
+                <div>
+                    <label for="csv-upload" class="block text-sm font-medium text-gray-700 mb-1">1. 上傳名條 (CSV)</label>
+                    <input type="file" id="csv-upload" accept=".csv" class="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-red-50 file:text-red-700 hover:file:bg-red-100">
+                </div>
+                 <button id="start-question-btn" class="bg-cyan-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-cyan-600">進入【提問】階段</button>
+                <button id="start-answer-btn" class="bg-amber-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-amber-600">進入【回答】階段</button>
+                <button id="start-presentation-btn" class="bg-green-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-600">進入【展示】階段</button>
+                <button id="start-guessing-btn" class="bg-pink-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-pink-600">進入【猜謎】階段</button>
+                <button id="start-results-btn" class="bg-teal-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-teal-600">進入【解謎】階段</button>
+                <button id="export-csv-btn" class="bg-blue-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-600">下載全班檔案(CSV)</button>
+                <button id="reset-btn" class="bg-gray-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-gray-600">重置所有資料</button>
+            </div>
+        </div>
+
+        <!-- 1. 提問介面 -->
+        <div id="question-phase" class="bg-white p-6 rounded-xl shadow-lg mb-8 force-hidden">
+             <h2 class="text-2xl font-bold mb-2 text-teal-700">第一階段：提出你的問題</h2>
             <p class="text-gray-600 mb-4">請想一個「能幫助你認識別人」的問題。全班同學新增的問題都會顯示在下面喔！</p>
             <div class="flex flex-col sm:flex-row gap-3 mb-4">
                 <input type="text" id="question-input" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition" placeholder="在這裡輸入你的問題...">
@@ -53,25 +104,38 @@
             </div>
             <h3 class="text-lg font-semibold mt-6 mb-2">目前已有的問題：</h3>
             <div id="question-list" class="flex flex-wrap gap-2 min-h-[3rem]"></div>
-            <div class="text-center mt-8">
-                <button id="start-activity-btn" class="bg-amber-500 text-white font-bold py-3 px-8 text-lg rounded-lg hover:bg-amber-600 transition-colors duration-300 shadow-lg transform hover:scale-105">
-                    問題都出好了！開始回答！
-                </button>
-            </div>
         </div>
-        <div id="phase-2" class="force-hidden">
-            <div class="bg-white p-6 rounded-xl shadow-lg mb-8">
-                <h2 id="phase-2-title" class="text-2xl font-bold mb-2 text-blue-700"></h2>
-                <p id="phase-2-subtitle" class="text-gray-600 mb-4"></p>
+
+        <!-- 2. 回答/展示介面 -->
+        <div id="answer-phase" class="force-hidden">
+             <div class="bg-white p-6 rounded-xl shadow-lg mb-8">
+                <h2 id="answer-phase-title" class="text-2xl font-bold mb-2 text-blue-700"></h2>
+                <p id="answer-phase-subtitle" class="text-gray-600 mb-4"></p>
             </div>
-            <div id="question-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4"></div>
-             <div class="text-center mt-8 space-x-4">
-                <button id="start-presentation-btn" class="bg-green-500 text-white font-bold py-3 px-8 text-lg rounded-lg hover:bg-green-600 transition-colors duration-300 shadow-lg">
-                    進入展示模式
-                </button>
-                <button id="reset-btn" class="bg-gray-500 text-white font-bold py-3 px-8 text-lg rounded-lg hover:bg-gray-600 transition-colors duration-300 shadow-lg">
-                    清除所有問題，重新開始
-                </button>
+            <div id="question-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-y-8 gap-x-4"></div>
+        </div>
+
+        <!-- 3. 猜謎介面 -->
+        <div id="guessing-phase" class="force-hidden">
+             <div class="bg-white p-6 rounded-xl shadow-lg mb-8">
+                <h2 class="text-2xl font-bold mb-2 text-pink-700">猜猜樂模式</h2>
+                <p class="text-gray-600 mb-4">請根據以下看到的檔案卡，猜猜看作者是誰？</p>
+            </div>
+            <div id="guessing-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+        </div>
+
+        <!-- 4. 結果介面 -->
+        <div id="results-phase" class="force-hidden">
+            <div class="bg-white p-8 rounded-xl shadow-lg text-center">
+                <h2 class="text-3xl font-bold mb-4 text-teal-700">解謎時間！</h2>
+                <div class="bg-teal-100 border-l-4 border-teal-500 text-teal-700 p-4 rounded-md mb-6">
+                    <p class="text-xl">全班平均答對率：</p>
+                    <p id="accuracy-display" class="text-5xl font-bold my-4">計算中...</p>
+                </div>
+                <h3 class="text-2xl font-bold mb-4 text-gray-800">個人答對率</h3>
+                <div id="individual-results-list" class="max-h-96 overflow-y-auto space-y-2 text-left">
+                    <!-- 個人結果會顯示在這裡 -->
+                </div>
             </div>
         </div>
     </div>
@@ -79,10 +143,9 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, onSnapshot, addDoc, doc, deleteDoc, writeBatch, query, getDocs, serverTimestamp, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, collection, onSnapshot, addDoc, doc, deleteDoc, writeBatch, query, getDocs, serverTimestamp, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // V V V V V V V V V V V V V V V V V V V V V V V V V V V V V V V
-        // --- 步驟 1：請將您從 Firebase 複製的設定貼在這裡 ---
         const firebaseConfig = {
             apiKey: "AIzaSyBGAatsLr0q6qf2Q-oO7idHFRq58OulEfo",
             authDomain: "project-2743401068297322661.firebaseapp.com",
@@ -92,101 +155,476 @@
             appId: "1:1009689077745:web:3b5614fa2597fb6e174650",
             measurementId: "G-HG65ZYFH13"
         };
-        // --- 您的專屬設定已更新！ ---
         // ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^
-
-        // --- 步驟 2：決定一個固定的活動代碼 (房間號碼) ---
-        // 您可以改成任何您想要的英文字串，例如 "my-classroom-activity"
         const APP_ID = "self-intro-activity-2025"; 
-        
-        // --- 以下為程式碼，通常不需要修改 ---
-
         const TEACHER_PASS = "23894238";
 
-        const phase1Div = document.getElementById('phase-1');
-        const phase2Div = document.getElementById('phase-2');
+        // DOM 元素
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const loginPhaseDiv = document.getElementById('login-phase');
+        const appContainer = document.getElementById('app-container');
+        const seatNumberInput = document.getElementById('seat-number-input');
+        const loginBtn = document.getElementById('login-btn');
+        const teacherAccessBtn = document.getElementById('teacher-access-btn');
+        const loginError = document.getElementById('login-error');
+        const userInfo = document.getElementById('user-info');
+        const teacherPanel = document.getElementById('teacher-panel');
+        const downloadCardBtn = document.getElementById('download-card-btn');
+        const questionPhaseDiv = document.getElementById('question-phase');
+        const answerPhaseDiv = document.getElementById('answer-phase');
+        const guessingPhaseDiv = document.getElementById('guessing-phase');
+        const resultsPhaseDiv = document.getElementById('results-phase');
         const questionInput = document.getElementById('question-input');
         const addQuestionBtn = document.getElementById('add-question-btn');
         const questionList = document.getElementById('question-list');
-        const startActivityBtn = document.getElementById('start-activity-btn');
-        const startPresentationBtn = document.getElementById('start-presentation-btn');
         const questionGrid = document.getElementById('question-grid');
-        const resetBtn = document.getElementById('reset-btn');
-        const loadingOverlay = document.getElementById('loading-overlay');
-        const sessionIdDisplay = document.getElementById('session-id-display');
-        const phase2Title = document.getElementById('phase-2-title');
-        const phase2Subtitle = document.getElementById('phase-2-subtitle');
+        const guessingGrid = document.getElementById('guessing-grid');
+        const accuracyDisplay = document.getElementById('accuracy-display');
+        const individualResultsList = document.getElementById('individual-results-list');
+        
+        let questions = [], studentRoster = [], currentPhase = 'login', currentUser = null, localStudentInfo = null, allAnswers = [], myGuesses = {};
 
-        let questions = [];
-        let currentPhase = 'phase1';
-
-        // 檢查 firebaseConfig 是否已填寫
-        if (!firebaseConfig || firebaseConfig.apiKey === "AIzaSyXXXXXXXXXXXXXXXXXXX") {
-            loadingOverlay.innerHTML = `<p class="text-red-500 font-bold p-4 text-center">錯誤：尚未設定 Firebase！<br>請依照教學，將您自己的 firebaseConfig 貼到 HTML 檔案中。</p>`;
+        if (!firebaseConfig || firebaseConfig.apiKey.includes("XXXXXX")) {
+            loadingOverlay.innerHTML = `<p>錯誤：尚未設定 Firebase！</p>`;
         } else {
             initializeAppWithId(APP_ID);
         }
 
-        function initializeAppWithId(appId) {
-            sessionIdDisplay.textContent = `活動代碼: ${appId}`;
-            
+        async function initializeAppWithId(appId) {
             const app = initializeApp(firebaseConfig);
             const auth = getAuth(app);
             const db = getFirestore(app);
-            const questionsColRef = collection(db, `artifacts/${appId}/public/data/questions`);
-            const stateDocRef = doc(db, `artifacts/${appId}/public/data/state/global`);
 
-            signInAnonymously(auth).then(() => {
-                setupStateListener(stateDocRef);
-                setupQuestionsListener(questionsColRef);
-            }).catch(error => {
+            try {
+                const userCredential = await signInAnonymously(auth);
+                currentUser = userCredential.user;
+                
+                setupStateListener(db);
+                setupRosterListener(db);
+                setupQuestionsListener(db);
+                setupAllAnswersListener(db);
+
+                loadingOverlay.classList.add('hidden');
+                updateUIView('login'); 
+            } catch (error) {
                 if (error.code === 'auth/configuration-not-found') {
-                    loadingOverlay.innerHTML = `<div class="p-4 text-center">
-                        <p class="text-red-500 font-bold text-lg">Firebase 設定錯誤！</p>
-                        <p class="text-gray-700 mt-2">這個專案尚未啟用「匿名登入」。</p>
-                        <p class="text-gray-600 mt-4 text-sm text-left">
-                            <b>請依照以下步驟修正：</b><br>
-                            1. 前往您的 Firebase 專案控制台。<br>
-                            2. 點選左側選單的「Authentication」。<br>
-                            3. 選擇「Sign-in method」分頁。<br>
-                            4. 在登入服務供應商清單中，找到「匿名」並啟用它。
-                        </p>
-                    </div>`;
+                    loadingOverlay.innerHTML = `<div class="p-4 text-center"><p class="text-red-500 font-bold text-lg">Firebase 設定錯誤！</p><p class="text-gray-700 mt-2">這個專案尚未啟用「匿名登入」。</p><p class="text-gray-600 mt-4 text-sm text-left"><b>請依照以下步驟修正：</b><br>1. 前往您的 Firebase 專案控制台。<br>2. 點選左側選單的「Authentication」。<br>3. 選擇「Sign-in method」分頁。<br>4. 在登入服務供應商清單中，找到「匿名」並啟用它。</p></div>`;
                  } else {
                     console.error("登入失敗:", error);
                     loadingOverlay.innerHTML = `<p class="text-red-500 font-bold">登入失敗，請檢查主控台錯誤訊息。</p>`;
                  }
+            }
+            
+            loginBtn.addEventListener('click', () => handleStudentLogin(db));
+            teacherAccessBtn.addEventListener('click', () => {
+                promptForPassword(() => {
+                    localStudentInfo = { name: '老師', seat: 'Teacher' };
+                    userInfo.textContent = '老師模式';
+                    updateUIView(currentPhase);
+                });
             });
 
-            addQuestionBtn.addEventListener('click', () => addQuestionToDB(questionsColRef));
-            questionInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') addQuestionToDB(questionsColRef); });
+            downloadCardBtn.addEventListener('click', handleDownloadCard);
             
-            startActivityBtn.addEventListener('click', () => {
-                promptForPassword(() => updateState(stateDocRef, 'phase2'));
+            document.getElementById('csv-upload').addEventListener('change', (e) => promptForPassword(() => handleCsvUpload(e.target.files[0], db)));
+            document.getElementById('start-question-btn').addEventListener('click', () => promptForPassword(() => updateState(db, 'question')));
+            document.getElementById('start-answer-btn').addEventListener('click', () => promptForPassword(() => updateState(db, 'answer')));
+            document.getElementById('start-presentation-btn').addEventListener('click', () => promptForPassword(() => updateState(db, 'presentation')));
+            document.getElementById('start-guessing-btn').addEventListener('click', () => promptForPassword(() => startGuessingGame(db)));
+            document.getElementById('start-results-btn').addEventListener('click', () => promptForPassword(() => updateState(db, 'results')));
+            document.getElementById('export-csv-btn').addEventListener('click', () => promptForPassword(() => exportAllDataToCsv()));
+            document.getElementById('reset-btn').addEventListener('click', () => promptForPassword(() => resetAllData(db)));
+            
+            addQuestionBtn.addEventListener('click', () => addQuestionToDB(db));
+            questionInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') addQuestionToDB(db); });
+        }
+        
+        function updateUIView(phase) {
+            document.body.className = `phase-${phase}`;
+            loginPhaseDiv.classList.toggle('force-hidden', phase !== 'login' || !!localStudentInfo);
+            appContainer.classList.toggle('force-hidden', phase === 'login' && !localStudentInfo);
+
+            if (phase === 'login' && !localStudentInfo) return;
+
+            const isTeacher = localStudentInfo && localStudentInfo.seat === 'Teacher';
+            teacherPanel.classList.toggle('force-hidden', !isTeacher);
+            downloadCardBtn.classList.toggle('force-hidden', isTeacher || !['presentation', 'guessing', 'results'].includes(phase));
+
+
+            questionPhaseDiv.classList.toggle('force-hidden', phase !== 'question');
+            answerPhaseDiv.classList.toggle('force-hidden', !['answer', 'presentation'].includes(phase));
+            guessingPhaseDiv.classList.toggle('force-hidden', phase !== 'guessing');
+            resultsPhaseDiv.classList.toggle('force-hidden', phase !== 'results');
+
+            if (phase === 'answer' || phase === 'presentation') {
+                const titleEl = document.getElementById('answer-phase-title');
+                const subtitleEl = document.getElementById('answer-phase-subtitle');
+                if (phase === 'answer') {
+                    titleEl.textContent = '第二階段：回答問題';
+                    subtitleEl.textContent = '請點擊卡片翻面作答，您的答案會自動儲存。';
+                } else {
+                    titleEl.textContent = '展示模式';
+                    subtitleEl.textContent = '所有答案已鎖定。您可以翻開自己的卡片查看，或點擊下方按鈕查看全班的回答。';
+                }
+                renderQuestionGrid(getFirestore());
+            } else if (phase === 'guessing') {
+                renderGuessingGrid(getFirestore());
+            } else if (phase === 'results') {
+                calculateAndShowAccuracy(getFirestore());
+            }
+        }
+
+        async function handleStudentLogin(db) {
+            loginError.textContent = '';
+            const seat = seatNumberInput.value;
+            if (!seat) {
+                loginError.textContent = '請輸入座號。';
+                return;
+            }
+            if (studentRoster.length === 0) {
+                loginError.textContent = '老師尚未上傳名條，請稍候。';
+                return;
+            }
+            const student = studentRoster.find(s => s.seat === seat);
+            if (student) {
+                localStudentInfo = student;
+                userInfo.textContent = `${student.seat}號 ${student.name}`;
+                const userDocRef = doc(db, `artifacts/${APP_ID}/public/data/users`, currentUser.uid);
+                await setDoc(userDocRef, { ...student, lastLogin: serverTimestamp() });
+                updateUIView(currentPhase);
+            } else {
+                loginError.textContent = '座號錯誤或不存在，請重新輸入。';
+            }
+        }
+
+        async function handleCsvUpload(file, db) {
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = async (event) => {
+                const text = event.target.result;
+                const rows = text.split('\n').filter(row => row.trim() !== '');
+                const roster = rows.map(row => {
+                    const columns = row.split(/[,，]/).map(item => item.trim());
+                    const seat = columns[0]; 
+                    const name = columns[3]; 
+                    return { seat, name };
+                }).filter(s => s.seat && s.name);
+                const rosterDocRef = doc(db, `artifacts/${APP_ID}/public/data/roster`, 'main');
+                await setDoc(rosterDocRef, { students: roster });
+                showModal('成功', `已成功上傳 ${roster.length} 位學生的名條。`, [{ text: '關閉', class: 'bg-blue-500', action: hideModal }]);
+            };
+            reader.readAsText(file, 'Big5');
+        }
+        
+        async function startGuessingGame(db) {
+            if (allAnswers.length < 2) {
+                showModal('錯誤', '需要至少兩位同學完成回答才能開始猜謎遊戲。', [{ text: '關閉', class: 'bg-red-500', action: hideModal }]);
+                return;
+            }
+
+            const batch = writeBatch(db);
+            const profiles = allAnswers.map(ans => ({ ...ans.studentInfo, authorId: ans.id, answers: ans.answers }));
+            const userIdsWhoAnswered = allAnswers.map(a => a.id);
+
+            userIdsWhoAnswered.forEach(userId => {
+                 const otherProfiles = profiles.filter(p => p.authorId !== userId);
+                 const shuffled = otherProfiles.sort(() => 0.5 - Math.random());
+                 const assignments = shuffled.slice(0, 7);
+                    
+                 const guessDocRef = doc(db, `artifacts/${APP_ID}/public/data/guesses`, userId);
+                 batch.set(guessDocRef, { assignments, myGuesses: {} });
             });
-            startPresentationBtn.addEventListener('click', () => {
-                promptForPassword(() => updateState(stateDocRef, 'presentation'));
+           
+            await batch.commit();
+            await updateState(db, 'guessing');
+        }
+
+        async function calculateAndShowAccuracy(db) {
+            const guessesSnapshot = await getDocs(collection(db, `artifacts/${APP_ID}/public/data/guesses`));
+            let totalGuessesMade = 0;
+            let totalCorrectGuesses = 0;
+            const individualResults = [];
+
+            const userIdToStudentMap = new Map();
+            allAnswers.forEach(ans => {
+                userIdToStudentMap.set(ans.id, ans.studentInfo);
             });
-            resetBtn.addEventListener('click', () => {
-                 promptForPassword(() => {
-                    deleteAllQuestions(questionsColRef);
-                    updateState(stateDocRef, 'phase1');
-                 });
+            
+            guessesSnapshot.forEach(doc => {
+                const guesserId = doc.id;
+                const guesserInfo = userIdToStudentMap.get(guesserId);
+                if (!guesserInfo) return;
+
+                const data = doc.data();
+                const myGuesses = data.myGuesses || {};
+                
+                let myTotalGuesses = 0;
+                let myCorrectGuesses = 0;
+
+                for(const authorId in myGuesses){
+                    if(myGuesses[authorId]){
+                        myTotalGuesses++;
+                        totalGuessesMade++;
+                        const authorInfo = userIdToStudentMap.get(authorId);
+                        if(authorInfo && myGuesses[authorId] === authorInfo.seat){
+                            myCorrectGuesses++;
+                            totalCorrectGuesses++;
+                        }
+                    }
+                }
+                
+                const myAccuracy = myTotalGuesses > 0 ? ((myCorrectGuesses / myTotalGuesses) * 100) : 0;
+                individualResults.push({
+                    seat: guesserInfo.seat,
+                    name: guesserInfo.name,
+                    accuracy: myAccuracy.toFixed(1)
+                });
+            });
+
+            const overallAccuracy = totalGuessesMade > 0 ? ((totalCorrectGuesses / totalGuessesMade) * 100).toFixed(1) : 0;
+            accuracyDisplay.textContent = `${overallAccuracy}%`;
+            
+            renderIndividualResults(individualResults);
+        }
+        
+        function renderIndividualResults(results) {
+            individualResultsList.innerHTML = '';
+            if (results.length === 0) {
+                individualResultsList.innerHTML = '<p class="text-center text-gray-500">尚無猜謎結果。</p>';
+                return;
+            }
+            results.sort((a, b) => a.seat - b.seat);
+            results.forEach(result => {
+                const resultEl = document.createElement('div');
+                resultEl.className = 'flex justify-between items-center p-3 bg-gray-50 rounded-lg';
+                resultEl.innerHTML = `
+                    <span class="font-semibold">${result.seat}號 ${result.name}</span>
+                    <span class="font-bold text-lg text-teal-600">${result.accuracy}%</span>
+                `;
+                individualResultsList.appendChild(resultEl);
+            });
+        }
+
+        function exportAllDataToCsv() {
+            if (questions.length === 0 || studentRoster.length === 0) {
+                showModal('錯誤', '沒有足夠的資料可以匯出。', [{ text: '關閉', class: 'bg-red-500', action: hideModal }]);
+                return;
+            }
+
+            let csvContent = '\uFEFF'; // BOM for Excel
+            const headers = ['座號', '姓名', ...questions.map(q => `"${q.text}"`)];
+            csvContent += headers.join(',') + '\r\n';
+
+            studentRoster.sort((a,b)=> a.seat - b.seat).forEach(student => {
+                const studentAnswers = allAnswers.find(a => a.studentInfo.seat === student.seat);
+                const row = [
+                    student.seat,
+                    student.name,
+                    ...questions.map(q => {
+                        const answer = studentAnswers?.answers?.[q.id] || '';
+                        return `"${answer.replace(/"/g, '""')}"`;
+                    })
+                ];
+                csvContent += row.join(',') + '\r\n';
+            });
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", "自我介紹小書_全班回答.csv");
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function handleDownloadCard() {
+            const myAnswerDoc = allAnswers.find(a => a.id === currentUser.uid);
+            if (!localStudentInfo || !myAnswerDoc) {
+                showModal('錯誤', '找不到您的回答資料，無法下載。', [{ text: '關閉', class: 'bg-red-500', action: hideModal }]);
+                return;
+            }
+
+            let printContent = `
+                <!DOCTYPE html>
+                <html lang="zh-Hant">
+                <head>
+                    <title>我的自我介紹小書</title>
+                    <style>
+                        body { font-family: 'Noto Sans TC', sans-serif, system-ui; margin: 20px; color: #333; }
+                        .header { text-align: center; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 20px; }
+                        .header h1 { font-size: 24px; margin: 0; }
+                        .header p { font-size: 16px; margin: 5px 0 0; color: #666; }
+                        .qa-item { margin-bottom: 15px; padding: 10px; border-radius: 8px; background-color: #f9f9f9; page-break-inside: avoid; }
+                        .qa-item .question { font-weight: bold; font-size: 16px; color: #1a5f7a; }
+                        .qa-item .answer { font-size: 14px; padding-left: 15px; margin-top: 5px; white-space: pre-wrap; word-wrap: break-word; }
+                    </style>
+                    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+                </head>
+                <body>
+                    <div class="header">
+                        <h1>我的自我介紹小書</h1>
+                        <p>${localStudentInfo.seat}號 ${localStudentInfo.name}</p>
+                    </div>
+            `;
+
+            questions.forEach(q => {
+                const answer = myAnswerDoc.answers[q.id] || '(未回答)';
+                printContent += `
+                    <div class="qa-item">
+                        <div class="question">${q.text}</div>
+                        <div class="answer">${answer.replace(/\n/g, '<br>')}</div>
+                    </div>
+                `;
+            });
+
+            printContent += '</body></html>';
+
+            const printWindow = window.open('', '_blank');
+            printWindow.document.write(printContent);
+            printWindow.document.close();
+            printWindow.focus();
+            setTimeout(() => {
+                printWindow.print();
+                printWindow.close();
+            }, 500);
+        }
+
+        function setupStateListener(db) { onSnapshot(doc(db, `artifacts/${APP_ID}/public/data/state`, 'global'), (docSnap) => { currentPhase = docSnap.exists() ? docSnap.data().phase : 'login'; if(localStudentInfo) updateUIView(currentPhase); }); }
+        function setupRosterListener(db) { onSnapshot(doc(db, `artifacts/${APP_ID}/public/data/roster`, 'main'), (docSnap) => { studentRoster = docSnap.exists() ? docSnap.data().students : []; }); }
+        function setupQuestionsListener(db) { onSnapshot(query(collection(db, `artifacts/${APP_ID}/public/data/questions`)), (snapshot) => { questions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a,b) => (a.createdAt?.seconds||0) - (b.createdAt?.seconds||0)); renderQuestionList(db); if(localStudentInfo) renderQuestionGrid(db); }); }
+        function setupAllAnswersListener(db) { onSnapshot(query(collection(db, `artifacts/${APP_ID}/public/data/answers`)), (snapshot) => { allAnswers = snapshot.docs.map(d => ({id: d.id, ...d.data()})); if (currentPhase === 'results' && localStudentInfo) calculateAndShowAccuracy(db); }); }
+        
+        async function updateState(db, newPhase) { await setDoc(doc(db, `artifacts/${APP_ID}/public/data/state`, 'global'), { phase: newPhase }); }
+        
+        async function addQuestionToDB(db) { const text = questionInput.value.trim(); if(text) { await addDoc(collection(db, `artifacts/${APP_ID}/public/data/questions`), { text, createdAt: serverTimestamp() }); questionInput.value = ''; } }
+        
+        async function resetAllData(db) {
+            showModal('處理中', '正在清除所有活動資料...', []);
+            const collectionsToDelete = ['questions', 'answers', 'guesses', 'users', 'state', 'roster'];
+            
+            for (const coll of collectionsToDelete) {
+                const collRef = collection(db, `artifacts/${APP_ID}/public/data/${coll}`);
+                const snapshot = await getDocs(collRef);
+                if(!snapshot.empty){
+                    const batch = writeBatch(db);
+                    snapshot.forEach(d => batch.delete(d.ref));
+                    await batch.commit();
+                }
+            }
+            
+            await setDoc(doc(db, `artifacts/${APP_ID}/public/data/state`, 'global'), { phase: 'login' });
+
+            showModal('完成', '所有資料已清除完畢。', [{ text: '關閉', class: 'bg-blue-500', action: () => { hideModal(); window.location.reload(); }}]);
+        }
+        
+        function renderQuestionList(db) {
+            questionList.innerHTML = '';
+            questions.forEach(q => {
+                const tag = document.createElement('div');
+                tag.className = 'bg-teal-100 text-teal-800 text-sm font-medium px-3 py-1 rounded-full flex items-center gap-2';
+                tag.textContent = q.text;
+                const removeBtn = document.createElement('button');
+                removeBtn.innerHTML = '&times;';
+                removeBtn.className = 'font-bold text-lg leading-none hover:text-red-500';
+                removeBtn.onclick = async () => { await deleteDoc(doc(db, `artifacts/${APP_ID}/public/data/questions`, q.id)); };
+                tag.appendChild(removeBtn);
+                questionList.appendChild(tag);
             });
         }
         
-        // --- 後續程式碼與前一版相同，此處省略 ---
-        async function setupStateListener(stateDocRef) { onSnapshot(stateDocRef, (docSnap) => { if (docSnap.exists()) { currentPhase = docSnap.data().phase || 'phase1'; } else { setDoc(stateDocRef, { phase: 'phase1' }); currentPhase = 'phase1'; } updateUIView(currentPhase); }); }
-        function updateUIView(phase) { phase1Div.classList.toggle('force-hidden', phase !== 'phase1'); phase2Div.classList.toggle('force-hidden', phase === 'phase1'); if (phase === 'phase2') { phase2Title.textContent = '第二階段：回答大家的問題'; phase2Subtitle.textContent = '點擊下方的問題卡片，卡片會翻面。請在背面寫下你的答案...'; startPresentationBtn.style.display = 'inline-block'; } else if (phase === 'presentation') { phase2Title.textContent = '展示模式：瀏覽與討論'; phase2Subtitle.textContent = '所有答案都已鎖定。點擊「查看所有回答」來了解班級的概況。'; startPresentationBtn.style.display = 'none'; } renderQuestionGrid(); }
-        function setupQuestionsListener(collectionRef) { onSnapshot(query(collectionRef), (snapshot) => { questions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0)); renderQuestionList(collectionRef.firestore, collectionRef.path); renderQuestionGrid(); loadingOverlay.classList.add('hidden'); }); }
-        async function updateState(stateDocRef, newPhase) { await setDoc(stateDocRef, { phase: newPhase }); }
-        async function addQuestionToDB(collectionRef) { const newQuestionText = questionInput.value.trim(); if (newQuestionText && !questions.map(q=>q.text).includes(newQuestionText)) { try { await addDoc(collectionRef, { text: newQuestionText, createdAt: serverTimestamp() }); questionInput.value = ''; questionInput.focus(); } catch (error) { console.error("新增問題失敗:", error); } } }
-        async function deleteQuestionFromDB(db, path, id) { try { await deleteDoc(doc(db, path, id)); } catch (error) { console.error("刪除問題失敗:", error); } }
-        async function deleteAllQuestions(collectionRef) { try { const querySnapshot = await getDocs(collectionRef); const batch = writeBatch(collectionRef.firestore); querySnapshot.forEach((doc) => { batch.delete(doc.ref); }); await batch.commit(); } catch (error) { console.error("清除問題失敗:", error); } }
-        async function saveAnswer(questionId, answerText) { const db = getFirestore(); const answerDocRef = doc(db, `artifacts/${APP_ID}/public/data/questions/${questionId}/answers/${getAuth().currentUser.uid}`); try { await setDoc(answerDocRef, { text: answerText, createdAt: serverTimestamp() }); } catch (error) { console.error("儲存答案失敗:", error); } }
-        async function viewAllAnswers(questionId, questionText) { const db = getFirestore(); const answersColRef = collection(db, `artifacts/${APP_ID}/public/data/questions/${questionId}/answers`); showModal('讀取中...', '<div class="loader mx-auto"></div>', []); try { const snapshot = await getDocs(answersColRef); const answers = snapshot.docs.map(doc => doc.data().text); const answerListHtml = answers.length > 0 ? `<ul class="text-left max-h-60 overflow-y-auto space-y-2">${answers.map(a => `<li class="p-2 bg-gray-100 rounded">${a}</li>`).join('')}</ul>` : '<p class="text-gray-500">還沒有人回答這個問題喔！</p>'; showModal(`問題：${questionText}`, answerListHtml, [{ text: '關閉', class: 'bg-gray-500', action: hideModal }]); } catch(e) { showModal('錯誤', '<p>讀取答案時發生錯誤。</p>', [{ text: '關閉', class: 'bg-red-500', action: hideModal }]); console.error(e); } }
-        function renderQuestionList(db, path) { questionList.innerHTML = ''; if (questions.length === 0) { questionList.innerHTML = '<p class="text-gray-500">還沒有人提出問題喔，快來當第一個！</p>'; return; } questions.forEach((q) => { const tag = document.createElement('div'); tag.className = 'bg-teal-100 text-teal-800 text-sm font-medium px-3 py-1 rounded-full flex items-center gap-2'; tag.textContent = q.text; const removeBtn = document.createElement('button'); removeBtn.innerHTML = '&times;'; removeBtn.className = 'font-bold text-lg leading-none hover:text-red-500'; removeBtn.onclick = () => deleteQuestionFromDB(db, path, q.id); tag.appendChild(removeBtn); questionList.appendChild(tag); }); }
-        function renderQuestionGrid() { questionGrid.innerHTML = ''; questions.forEach(q => { const isPresentation = currentPhase === 'presentation'; const card = document.createElement('div'); card.className = 'w-full h-56 bg-transparent rounded-xl perspective'; card.innerHTML = ` <div class="flip-card-inner rounded-xl"> <div class="flip-card-front bg-blue-400 text-white text-center font-bold p-2"><p>${q.text}</p></div> <div class="flip-card-back bg-orange-200"><textarea data-question-id="${q.id}" class="w-full h-full p-2 bg-transparent border-0 rounded-xl focus:ring-0 text-gray-700" placeholder="在這裡寫下你的答案..." ${isPresentation ? 'readonly' : ''}></textarea></div> </div> ${isPresentation ? `<button data-question-id="${q.id}" data-question-text="${q.text}" class="view-all-btn mt-2 w-full bg-indigo-500 text-white text-sm py-1 px-2 rounded-md hover:bg-indigo-600 transition">查看所有回答</button>` : ''} `; if (!isPresentation) { card.addEventListener('click', (e) => { if (e.target.tagName.toLowerCase() !== 'textarea') { card.classList.toggle('is-flipped'); } }); const textarea = card.querySelector('textarea'); textarea.addEventListener('blur', () => { saveAnswer(q.id, textarea.value.trim()); }); } else { const viewAllBtn = card.querySelector('.view-all-btn'); viewAllBtn.addEventListener('click', () => { viewAllAnswers(viewAllBtn.dataset.questionId, viewAllBtn.dataset.questionText); }); } questionGrid.appendChild(card); }); }
+        function renderQuestionGrid(db) {
+            questionGrid.innerHTML = '';
+            const myAnswerDoc = allAnswers.find(a => a.id === currentUser.uid);
+            questions.forEach(q => {
+                const isPresentation = currentPhase === 'presentation';
+                const savedAnswer = myAnswerDoc?.answers?.[q.id] || '';
+                const cardContainer = document.createElement('div');
+                cardContainer.className = 'flex flex-col items-center';
+
+                const card = document.createElement('div');
+                card.className = 'w-full h-48 bg-transparent rounded-xl perspective';
+                card.innerHTML = `<div class="flip-card-inner rounded-xl"><div class="flip-card-front bg-blue-400 text-white p-2"><p>${q.text}</p></div><div class="flip-card-back bg-orange-200"><textarea data-question-id="${q.id}" class="w-full h-full p-2 bg-transparent border-0 rounded-xl" placeholder="請作答..." ${isPresentation ? 'readonly' : ''}>${savedAnswer}</textarea></div></div>`;
+                card.addEventListener('click', e => { if (e.target.tagName.toLowerCase() !== 'textarea') card.classList.toggle('is-flipped'); });
+                
+                if (!isPresentation) {
+                    const textarea = card.querySelector('textarea');
+                    textarea.addEventListener('blur', () => {
+                        const answerDocRef = doc(db, `artifacts/${APP_ID}/public/data/answers`, currentUser.uid);
+                        setDoc(answerDocRef, { studentInfo: localStudentInfo, answers: { ...myAnswerDoc?.answers, [q.id]: textarea.value.trim() } }, { merge: true });
+                    });
+                }
+
+                cardContainer.appendChild(card);
+
+                if (isPresentation) {
+                    const viewAllBtn = document.createElement('button');
+                    viewAllBtn.textContent = '查看所有回答';
+                    viewAllBtn.className = 'mt-2 w-full max-w-[200px] bg-indigo-500 text-white text-sm py-1 px-2 rounded-md hover:bg-indigo-600 transition';
+                    viewAllBtn.onclick = () => viewAllAnswers(db, q.id, q.text);
+                    cardContainer.appendChild(viewAllBtn);
+                }
+
+                questionGrid.appendChild(cardContainer);
+            });
+        }
+        
+        async function viewAllAnswers(db, questionId, questionText) {
+            showModal('讀取中...', '<div class="loader mx-auto"></div>', []);
+            const answers = allAnswers.map(a => a.answers[questionId]).filter(ans => ans);
+            
+            const answerListHtml = answers.length > 0 
+                ? `<ul class="text-left max-h-60 overflow-y-auto space-y-2">${answers.map(a => `<li class="p-2 bg-gray-100 rounded">${a}</li>`).join('')}</ul>`
+                : '<p class="text-gray-500">還沒有人回答這個問題喔！</p>';
+            
+            showModal(`問題：${questionText}`, answerListHtml, [{ text: '關閉', class: 'bg-gray-500', action: hideModal }]);
+        }
+
+        async function renderGuessingGrid(db) {
+            const guessDocRef = doc(db, `artifacts/${APP_ID}/public/data/guesses`, currentUser.uid);
+            const guessDoc = await getDoc(guessDocRef);
+            if (!guessDoc.exists()) {
+                guessingGrid.innerHTML = '<p>正在等待老師分配檔案卡...</p>';
+                return;
+            }
+            const { assignments, myGuesses = {} } = guessDoc.data();
+            guessingGrid.innerHTML = '';
+
+            assignments.forEach(profile => {
+                const card = document.createElement('div');
+                card.className = 'bg-white p-4 rounded-lg shadow';
+                let answersHtml = questions.map(q => {
+                    const answer = profile.answers[q.id] || '(未回答)';
+                    return `<div class="text-left"><p class="font-semibold text-sm">${q.text}</p><p class="text-gray-600 pl-2">${answer}</p></div>`;
+                }).join('<hr class="my-2">');
+
+                const rosterOptions = studentRoster.sort((a,b)=>a.seat-b.seat).map(s => `<option value="${s.seat}" ${myGuesses[profile.authorId] === s.seat ? 'selected' : ''}>${s.seat}號 ${s.name}</option>`).join('');
+
+                card.innerHTML = `
+                    <h3 class="font-bold text-lg mb-2 text-center">匿名檔案卡</h3>
+                    <div class="space-y-2 mb-4">${answersHtml}</div>
+                    <div class="flex items-center gap-2">
+                        <label class="font-semibold">猜他是：</label>
+                        <select data-author-id="${profile.authorId}" class="w-full p-2 border rounded">
+                            <option value="">請選擇...</option>
+                            ${rosterOptions}
+                        </select>
+                    </div>
+                `;
+                guessingGrid.appendChild(card);
+            });
+            
+            guessingGrid.querySelectorAll('select').forEach(select => {
+                select.addEventListener('change', async (e) => {
+                    const authorId = e.target.dataset.authorId;
+                    const guessedSeat = e.target.value;
+                    const currentGuesses = (await getDoc(guessDocRef)).data().myGuesses || {};
+                    await setDoc(guessDocRef, { myGuesses: { ...currentGuesses, [authorId]: guessedSeat } }, { merge: true });
+                });
+            });
+        }
+
         function showModal(title, bodyHtml, buttons) { const modalTitle = document.getElementById('modal-title'); const modalBody = document.getElementById('modal-body'); const modalButtons = document.getElementById('modal-buttons'); const customModal = document.getElementById('custom-modal'); const modalContent = document.getElementById('modal-content'); modalTitle.textContent = title; modalBody.innerHTML = bodyHtml; modalButtons.innerHTML = ''; buttons.forEach(btn => { const buttonEl = document.createElement('button'); buttonEl.textContent = btn.text; buttonEl.className = `${btn.class} text-white font-bold py-2 px-6 rounded-lg`; buttonEl.onclick = btn.action; modalButtons.appendChild(buttonEl); }); customModal.classList.remove('hidden'); setTimeout(() => { modalContent.classList.add('scale-100', 'opacity-100'); }, 10); }
         function hideModal() { const customModal = document.getElementById('custom-modal'); const modalContent = document.getElementById('modal-content'); modalContent.classList.remove('scale-100', 'opacity-100'); setTimeout(() => { customModal.classList.add('hidden'); }, 200); }
         function promptForPassword(onSuccess) { const body = ` <p class="text-sm text-gray-600 mb-2">請輸入老師密碼：</p> <input type="password" id="password-input" class="w-full px-3 py-2 border rounded-md text-center"> <p id="password-error" class="text-red-500 text-sm mt-2 h-4"></p> `; const buttons = [ { text: '取消', class: 'bg-gray-400', action: hideModal }, { text: '確認', class: 'bg-blue-500', action: () => { const passInput = document.getElementById('password-input'); const errorP = document.getElementById('password-error'); if (passInput.value === TEACHER_PASS) { hideModal(); onSuccess(); } else { errorP.textContent = '密碼錯誤！'; passInput.focus(); } }} ]; showModal('需要權限', body, buttons); setTimeout(() => document.getElementById('password-input').focus(), 100); }
