@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>自我介紹小書產生器 (GitHub版)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+        }
+        .perspective { perspective: 1000px; }
+        .flip-card-inner { position: relative; width: 100%; height: 100%; transition: transform 0.7s; transform-style: preserve-3d; box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); }
+        .is-flipped .flip-card-inner { transform: rotateY(180deg); }
+        .flip-card-front, .flip-card-back { position: absolute; width: 100%; height: 100%; -webkit-backface-visibility: hidden; backface-visibility: hidden; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 1rem; border-radius: 0.75rem; text-align: center; }
+        .flip-card-back { transform: rotateY(180deg); }
+        textarea { resize: none; }
+        .loader { border: 5px solid #f3f3f3; border-radius: 50%; border-top: 5px solid #3498db; width: 50px; height: 50px; animation: spin 1.5s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .force-hidden { display: none !important; }
+    </style>
+</head>
+<body class="bg-amber-50 text-gray-800">
+    <!-- 內容與前一版相同，此處省略以節省篇幅 -->
+    <div id="loading-overlay" class="fixed inset-0 bg-white bg-opacity-80 z-50 flex justify-center items-center backdrop-blur-sm">
+        <div class="text-center">
+            <div class="loader mx-auto"></div>
+            <p class="mt-4 text-lg text-gray-700 font-semibold">正在連線到共享教室...</p>
+        </div>
+    </div>
+    <div id="custom-modal" class="fixed inset-0 bg-gray-900 bg-opacity-50 z-50 hidden flex justify-center items-center p-4">
+        <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm text-center transform transition-all scale-95 opacity-0" id="modal-content">
+            <h3 id="modal-title" class="text-xl font-bold mb-4"></h3>
+            <div id="modal-body"></div>
+            <div id="modal-buttons" class="flex justify-center gap-4 mt-6"></div>
+        </div>
+    </div>
+     <div id="app-container" class="container mx-auto p-4 md:p-8">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl md:text-5xl font-bold text-amber-700">自我介紹小書</h1>
+            <p class="mt-2 text-lg text-amber-600">讓我們透過問與答，更認識彼此！</p>
+            <p id="session-id-display" class="text-sm text-gray-500 mt-2 font-mono bg-gray-100 px-2 py-1 rounded-md inline-block"></p>
+        </header>
+        <div id="phase-1" class="bg-white p-6 rounded-xl shadow-lg mb-8 force-hidden">
+            <h2 class="text-2xl font-bold mb-2 text-teal-700">第一階段：提出你的問題</h2>
+            <p class="text-gray-600 mb-4">請想一個「能幫助你認識別人」的問題。全班同學新增的問題都會顯示在下面喔！</p>
+            <div class="flex flex-col sm:flex-row gap-3 mb-4">
+                <input type="text" id="question-input" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition" placeholder="在這裡輸入你的問題...">
+                <button id="add-question-btn" class="w-full sm:w-auto bg-teal-500 text-white font-bold py-2 px-6 rounded-lg hover:bg-teal-600 transition-colors duration-300 shadow">新增問題</button>
+            </div>
+            <h3 class="text-lg font-semibold mt-6 mb-2">目前已有的問題：</h3>
+            <div id="question-list" class="flex flex-wrap gap-2 min-h-[3rem]"></div>
+            <div class="text-center mt-8">
+                <button id="start-activity-btn" class="bg-amber-500 text-white font-bold py-3 px-8 text-lg rounded-lg hover:bg-amber-600 transition-colors duration-300 shadow-lg transform hover:scale-105">
+                    問題都出好了！開始回答！
+                </button>
+            </div>
+        </div>
+        <div id="phase-2" class="force-hidden">
+            <div class="bg-white p-6 rounded-xl shadow-lg mb-8">
+                <h2 id="phase-2-title" class="text-2xl font-bold mb-2 text-blue-700"></h2>
+                <p id="phase-2-subtitle" class="text-gray-600 mb-4"></p>
+            </div>
+            <div id="question-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4"></div>
+             <div class="text-center mt-8 space-x-4">
+                <button id="start-presentation-btn" class="bg-green-500 text-white font-bold py-3 px-8 text-lg rounded-lg hover:bg-green-600 transition-colors duration-300 shadow-lg">
+                    進入展示模式
+                </button>
+                <button id="reset-btn" class="bg-gray-500 text-white font-bold py-3 px-8 text-lg rounded-lg hover:bg-gray-600 transition-colors duration-300 shadow-lg">
+                    清除所有問題，重新開始
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, onSnapshot, addDoc, doc, deleteDoc, writeBatch, query, getDocs, serverTimestamp, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // V V V V V V V V V V V V V V V V V V V V V V V V V V V V V V V
+        // --- 步驟 1：請將您從 Firebase 複製的設定貼在這裡 ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyBGAatsLr0q6qf2Q-oO7idHFRq58OulEfo",
+            authDomain: "project-2743401068297322661.firebaseapp.com",
+            projectId: "project-2743401068297322661",
+            storageBucket: "project-2743401068297322661.firebasestorage.app",
+            messagingSenderId: "1009689077745",
+            appId: "1:1009689077745:web:3b5614fa2597fb6e174650",
+            measurementId: "G-HG65ZYFH13"
+        };
+        // --- 您的專屬設定已更新！ ---
+        // ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^
+
+        // --- 步驟 2：決定一個固定的活動代碼 (房間號碼) ---
+        // 您可以改成任何您想要的英文字串，例如 "my-classroom-activity"
+        const APP_ID = "self-intro-activity-2025"; 
+        
+        // --- 以下為程式碼，通常不需要修改 ---
+
+        const TEACHER_PASS = "23894238";
+
+        const phase1Div = document.getElementById('phase-1');
+        const phase2Div = document.getElementById('phase-2');
+        const questionInput = document.getElementById('question-input');
+        const addQuestionBtn = document.getElementById('add-question-btn');
+        const questionList = document.getElementById('question-list');
+        const startActivityBtn = document.getElementById('start-activity-btn');
+        const startPresentationBtn = document.getElementById('start-presentation-btn');
+        const questionGrid = document.getElementById('question-grid');
+        const resetBtn = document.getElementById('reset-btn');
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const sessionIdDisplay = document.getElementById('session-id-display');
+        const phase2Title = document.getElementById('phase-2-title');
+        const phase2Subtitle = document.getElementById('phase-2-subtitle');
+
+        let questions = [];
+        let currentPhase = 'phase1';
+
+        // 檢查 firebaseConfig 是否已填寫
+        if (!firebaseConfig || firebaseConfig.apiKey === "AIzaSyXXXXXXXXXXXXXXXXXXX") {
+            loadingOverlay.innerHTML = `<p class="text-red-500 font-bold p-4 text-center">錯誤：尚未設定 Firebase！<br>請依照教學，將您自己的 firebaseConfig 貼到 HTML 檔案中。</p>`;
+        } else {
+            initializeAppWithId(APP_ID);
+        }
+
+        function initializeAppWithId(appId) {
+            sessionIdDisplay.textContent = `活動代碼: ${appId}`;
+            
+            const app = initializeApp(firebaseConfig);
+            const auth = getAuth(app);
+            const db = getFirestore(app);
+            const questionsColRef = collection(db, `artifacts/${appId}/public/data/questions`);
+            const stateDocRef = doc(db, `artifacts/${appId}/public/data/state/global`);
+
+            signInAnonymously(auth).then(() => {
+                setupStateListener(stateDocRef);
+                setupQuestionsListener(questionsColRef);
+            }).catch(error => {
+                if (error.code === 'auth/configuration-not-found') {
+                    loadingOverlay.innerHTML = `<div class="p-4 text-center">
+                        <p class="text-red-500 font-bold text-lg">Firebase 設定錯誤！</p>
+                        <p class="text-gray-700 mt-2">這個專案尚未啟用「匿名登入」。</p>
+                        <p class="text-gray-600 mt-4 text-sm text-left">
+                            <b>請依照以下步驟修正：</b><br>
+                            1. 前往您的 Firebase 專案控制台。<br>
+                            2. 點選左側選單的「Authentication」。<br>
+                            3. 選擇「Sign-in method」分頁。<br>
+                            4. 在登入服務供應商清單中，找到「匿名」並啟用它。
+                        </p>
+                    </div>`;
+                 } else {
+                    console.error("登入失敗:", error);
+                    loadingOverlay.innerHTML = `<p class="text-red-500 font-bold">登入失敗，請檢查主控台錯誤訊息。</p>`;
+                 }
+            });
+
+            addQuestionBtn.addEventListener('click', () => addQuestionToDB(questionsColRef));
+            questionInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') addQuestionToDB(questionsColRef); });
+            
+            startActivityBtn.addEventListener('click', () => {
+                promptForPassword(() => updateState(stateDocRef, 'phase2'));
+            });
+            startPresentationBtn.addEventListener('click', () => {
+                promptForPassword(() => updateState(stateDocRef, 'presentation'));
+            });
+            resetBtn.addEventListener('click', () => {
+                 promptForPassword(() => {
+                    deleteAllQuestions(questionsColRef);
+                    updateState(stateDocRef, 'phase1');
+                 });
+            });
+        }
+        
+        // --- 後續程式碼與前一版相同，此處省略 ---
+        async function setupStateListener(stateDocRef) { onSnapshot(stateDocRef, (docSnap) => { if (docSnap.exists()) { currentPhase = docSnap.data().phase || 'phase1'; } else { setDoc(stateDocRef, { phase: 'phase1' }); currentPhase = 'phase1'; } updateUIView(currentPhase); }); }
+        function updateUIView(phase) { phase1Div.classList.toggle('force-hidden', phase !== 'phase1'); phase2Div.classList.toggle('force-hidden', phase === 'phase1'); if (phase === 'phase2') { phase2Title.textContent = '第二階段：回答大家的問題'; phase2Subtitle.textContent = '點擊下方的問題卡片，卡片會翻面。請在背面寫下你的答案...'; startPresentationBtn.style.display = 'inline-block'; } else if (phase === 'presentation') { phase2Title.textContent = '展示模式：瀏覽與討論'; phase2Subtitle.textContent = '所有答案都已鎖定。點擊「查看所有回答」來了解班級的概況。'; startPresentationBtn.style.display = 'none'; } renderQuestionGrid(); }
+        function setupQuestionsListener(collectionRef) { onSnapshot(query(collectionRef), (snapshot) => { questions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0)); renderQuestionList(collectionRef.firestore, collectionRef.path); renderQuestionGrid(); loadingOverlay.classList.add('hidden'); }); }
+        async function updateState(stateDocRef, newPhase) { await setDoc(stateDocRef, { phase: newPhase }); }
+        async function addQuestionToDB(collectionRef) { const newQuestionText = questionInput.value.trim(); if (newQuestionText && !questions.map(q=>q.text).includes(newQuestionText)) { try { await addDoc(collectionRef, { text: newQuestionText, createdAt: serverTimestamp() }); questionInput.value = ''; questionInput.focus(); } catch (error) { console.error("新增問題失敗:", error); } } }
+        async function deleteQuestionFromDB(db, path, id) { try { await deleteDoc(doc(db, path, id)); } catch (error) { console.error("刪除問題失敗:", error); } }
+        async function deleteAllQuestions(collectionRef) { try { const querySnapshot = await getDocs(collectionRef); const batch = writeBatch(collectionRef.firestore); querySnapshot.forEach((doc) => { batch.delete(doc.ref); }); await batch.commit(); } catch (error) { console.error("清除問題失敗:", error); } }
+        async function saveAnswer(questionId, answerText) { const db = getFirestore(); const answerDocRef = doc(db, `artifacts/${APP_ID}/public/data/questions/${questionId}/answers/${getAuth().currentUser.uid}`); try { await setDoc(answerDocRef, { text: answerText, createdAt: serverTimestamp() }); } catch (error) { console.error("儲存答案失敗:", error); } }
+        async function viewAllAnswers(questionId, questionText) { const db = getFirestore(); const answersColRef = collection(db, `artifacts/${APP_ID}/public/data/questions/${questionId}/answers`); showModal('讀取中...', '<div class="loader mx-auto"></div>', []); try { const snapshot = await getDocs(answersColRef); const answers = snapshot.docs.map(doc => doc.data().text); const answerListHtml = answers.length > 0 ? `<ul class="text-left max-h-60 overflow-y-auto space-y-2">${answers.map(a => `<li class="p-2 bg-gray-100 rounded">${a}</li>`).join('')}</ul>` : '<p class="text-gray-500">還沒有人回答這個問題喔！</p>'; showModal(`問題：${questionText}`, answerListHtml, [{ text: '關閉', class: 'bg-gray-500', action: hideModal }]); } catch(e) { showModal('錯誤', '<p>讀取答案時發生錯誤。</p>', [{ text: '關閉', class: 'bg-red-500', action: hideModal }]); console.error(e); } }
+        function renderQuestionList(db, path) { questionList.innerHTML = ''; if (questions.length === 0) { questionList.innerHTML = '<p class="text-gray-500">還沒有人提出問題喔，快來當第一個！</p>'; return; } questions.forEach((q) => { const tag = document.createElement('div'); tag.className = 'bg-teal-100 text-teal-800 text-sm font-medium px-3 py-1 rounded-full flex items-center gap-2'; tag.textContent = q.text; const removeBtn = document.createElement('button'); removeBtn.innerHTML = '&times;'; removeBtn.className = 'font-bold text-lg leading-none hover:text-red-500'; removeBtn.onclick = () => deleteQuestionFromDB(db, path, q.id); tag.appendChild(removeBtn); questionList.appendChild(tag); }); }
+        function renderQuestionGrid() { questionGrid.innerHTML = ''; questions.forEach(q => { const isPresentation = currentPhase === 'presentation'; const card = document.createElement('div'); card.className = 'w-full h-56 bg-transparent rounded-xl perspective'; card.innerHTML = ` <div class="flip-card-inner rounded-xl"> <div class="flip-card-front bg-blue-400 text-white text-center font-bold p-2"><p>${q.text}</p></div> <div class="flip-card-back bg-orange-200"><textarea data-question-id="${q.id}" class="w-full h-full p-2 bg-transparent border-0 rounded-xl focus:ring-0 text-gray-700" placeholder="在這裡寫下你的答案..." ${isPresentation ? 'readonly' : ''}></textarea></div> </div> ${isPresentation ? `<button data-question-id="${q.id}" data-question-text="${q.text}" class="view-all-btn mt-2 w-full bg-indigo-500 text-white text-sm py-1 px-2 rounded-md hover:bg-indigo-600 transition">查看所有回答</button>` : ''} `; if (!isPresentation) { card.addEventListener('click', (e) => { if (e.target.tagName.toLowerCase() !== 'textarea') { card.classList.toggle('is-flipped'); } }); const textarea = card.querySelector('textarea'); textarea.addEventListener('blur', () => { saveAnswer(q.id, textarea.value.trim()); }); } else { const viewAllBtn = card.querySelector('.view-all-btn'); viewAllBtn.addEventListener('click', () => { viewAllAnswers(viewAllBtn.dataset.questionId, viewAllBtn.dataset.questionText); }); } questionGrid.appendChild(card); }); }
+        function showModal(title, bodyHtml, buttons) { const modalTitle = document.getElementById('modal-title'); const modalBody = document.getElementById('modal-body'); const modalButtons = document.getElementById('modal-buttons'); const customModal = document.getElementById('custom-modal'); const modalContent = document.getElementById('modal-content'); modalTitle.textContent = title; modalBody.innerHTML = bodyHtml; modalButtons.innerHTML = ''; buttons.forEach(btn => { const buttonEl = document.createElement('button'); buttonEl.textContent = btn.text; buttonEl.className = `${btn.class} text-white font-bold py-2 px-6 rounded-lg`; buttonEl.onclick = btn.action; modalButtons.appendChild(buttonEl); }); customModal.classList.remove('hidden'); setTimeout(() => { modalContent.classList.add('scale-100', 'opacity-100'); }, 10); }
+        function hideModal() { const customModal = document.getElementById('custom-modal'); const modalContent = document.getElementById('modal-content'); modalContent.classList.remove('scale-100', 'opacity-100'); setTimeout(() => { customModal.classList.add('hidden'); }, 200); }
+        function promptForPassword(onSuccess) { const body = ` <p class="text-sm text-gray-600 mb-2">請輸入老師密碼：</p> <input type="password" id="password-input" class="w-full px-3 py-2 border rounded-md text-center"> <p id="password-error" class="text-red-500 text-sm mt-2 h-4"></p> `; const buttons = [ { text: '取消', class: 'bg-gray-400', action: hideModal }, { text: '確認', class: 'bg-blue-500', action: () => { const passInput = document.getElementById('password-input'); const errorP = document.getElementById('password-error'); if (passInput.value === TEACHER_PASS) { hideModal(); onSuccess(); } else { errorP.textContent = '密碼錯誤！'; passInput.focus(); } }} ]; showModal('需要權限', body, buttons); setTimeout(() => document.getElementById('password-input').focus(), 100); }
+    </script>
+</body>
+</html>
+
